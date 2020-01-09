@@ -1,0 +1,92 @@
+From de606e9c256f5a776c1625b174600a539007f38d Mon Sep 17 00:00:00 2001
+From: Jaroslav Kysela <perex@perex.cz>
+Date: Wed, 11 Aug 2010 20:20:40 +0200
+Subject: [PATCH] pcm: introduce defaults.pcm.compat to change the params
+ choose behaviour
+
+Having getenv directly in the function is not a good idea. Allow
+configuration of the behaviour change in snd_pcm_param_choose() function
+using alsa.conf. Use the environment variable LIBASOUND_COMPAT only
+as fallback.
+
+Signed-off-by: Jaroslav Kysela <perex@perex.cz>
+---
+ src/conf/alsa.conf   |    1 +
+ src/pcm/pcm.c        |   12 ++++++++++++
+ src/pcm/pcm_local.h  |    3 ++-
+ src/pcm/pcm_params.c |    3 +--
+ 4 files changed, 16 insertions(+), 3 deletions(-)
+
+diff --git a/src/conf/alsa.conf b/src/conf/alsa.conf
+index 5160529..1889f01 100644
+--- a/src/conf/alsa.conf
++++ b/src/conf/alsa.conf
+@@ -63,6 +63,7 @@
+ defaults.pcm.device 0
+ defaults.pcm.subdevice -1
+ defaults.pcm.nonblock 1
++defaults.pcm.compat 1
+ defaults.pcm.minperiodtime 5000		# in us
+ defaults.pcm.ipc_key 5678293
+ defaults.pcm.ipc_perm 0600
+diff --git a/src/pcm/pcm.c b/src/pcm/pcm.c
+index f3c2f74..8a4bc6a 100644
+--- a/src/pcm/pcm.c
++++ b/src/pcm/pcm.c
+@@ -2192,6 +2192,18 @@ static int snd_pcm_open_conf(snd_pcm_t **pcmp, const char *name,
+ 		}
+ 	}
+ 	if (err >= 0) {
++		err = snd_config_search(pcm_root, "defaults.pcm.compat", &tmp);
++		if (err >= 0) {
++			long i;
++			if (snd_config_get_integer(tmp, &i) >= 0) {
++				if (i > 0)
++					(*pcmp)->compat = 1;
++			}
++		} else {
++			char *str = getenv("LIBASOUND_COMPAT");
++			if (str && *str)
++				(*pcmp)->compat = 1;
++		}
+ 		err = snd_config_search(pcm_root, "defaults.pcm.minperiodtime", &tmp);
+ 		if (err >= 0)
+ 			snd_config_get_integer(tmp, &(*pcmp)->minperiodtime);
+diff --git a/src/pcm/pcm_local.h b/src/pcm/pcm_local.h
+index dda970c..16069b6 100644
+--- a/src/pcm/pcm_local.h
++++ b/src/pcm/pcm_local.h
+@@ -184,7 +184,8 @@ struct _snd_pcm {
+ 	int poll_fd;
+ 	unsigned short poll_events;
+ 	int setup: 1,
+-	    monotonic: 1;
++	    monotonic: 1,
++	    compat: 1;
+ 	snd_pcm_access_t access;	/* access mode */
+ 	snd_pcm_format_t format;	/* SND_PCM_FORMAT_* */
+ 	snd_pcm_subformat_t subformat;	/* subformat */
+diff --git a/src/pcm/pcm_params.c b/src/pcm/pcm_params.c
+index 6120677..c7c3b97 100644
+--- a/src/pcm/pcm_params.c
++++ b/src/pcm/pcm_params.c
+@@ -1081,7 +1081,6 @@ int snd_pcm_hw_param_never_eq(const snd_pcm_hw_params_t *params,
+ static int snd_pcm_hw_params_choose(snd_pcm_t *pcm, snd_pcm_hw_params_t *params)
+ {
+ 	int err;
+-	const char *compat = getenv("LIBASOUND_COMPAT");
+ #ifdef CHOOSE_DEBUG
+ 	snd_output_t *log;
+ 	snd_output_stdio_attach(&log, stderr, 0);
+@@ -1115,7 +1114,7 @@ static int snd_pcm_hw_params_choose(snd_pcm_t *pcm, snd_pcm_hw_params_t *params)
+ 			snd_pcm_hw_param_set_min(pcm, params, SND_CHANGE, SND_PCM_HW_PARAM_PERIOD_TIME, &min, &dir);
+ 		}
+ 	}
+-	if (compat && *compat) {
++	if (pcm->compat) {
+ 		/* old mode */
+ 		err = snd_pcm_hw_param_set_first(pcm, params, SND_PCM_HW_PARAM_PERIOD_TIME, NULL, 0);
+ 		if (err < 0)
+-- 
+1.7.6
+

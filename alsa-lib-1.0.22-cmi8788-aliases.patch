@@ -1,0 +1,32 @@
+From 45e9496a7a666210702598d0c2d3b43065a5f940 Mon Sep 17 00:00:00 2001
+From: Clemens Ladisch <clemens@ladisch.de>
+Date: Mon, 10 Jan 2011 16:22:15 +0100
+Subject: [PATCH] aliases.conf: add aliases for CMI8788-based cards
+
+Add entries for all the aliases of the CMI8788 chip.
+(Not all of them are currently used by the driver.)
+
+Signed-off-by: Clemens Ladisch <clemens@ladisch.de>
+---
+ src/conf/cards/aliases.conf |    4 ++++
+ 1 files changed, 4 insertions(+), 0 deletions(-)
+
+diff --git a/src/conf/cards/aliases.conf b/src/conf/cards/aliases.conf
+index c788621..4a92fb2 100644
+--- a/src/conf/cards/aliases.conf
++++ b/src/conf/cards/aliases.conf
+@@ -50,7 +50,11 @@ Allegro cards.Maestro3
+ Canyon3D-2 cards.Maestro3
+ Azalia cards.HDA-Intel
+ aaci-pl041 cards.AACI
++AV66 cards.CMI8788
++AV100 cards.CMI8788
+ AV200 cards.CMI8788
++CMI8786 cards.CMI8788
++CMI8787 cards.CMI8788
+ 
+ <confdir:pcm/default.conf>
+ <confdir:pcm/dmix.conf>
+-- 
+1.7.6
+

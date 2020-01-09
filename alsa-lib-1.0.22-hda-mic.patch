@@ -1,0 +1,46 @@
+From 6bb36928b114e27dcfeeddceabc3241e0fe1d921 Mon Sep 17 00:00:00 2001
+From: Raymond Yau <superquad.vortex2@gmail.com>
+Date: Sun, 24 Apr 2011 11:56:44 +0800
+Subject: [PATCH] HDA-Intel.conf - Fix low mic volume due to pulseaudio using
+ "front" device for playback and capture
+
+Signed-off-by: Raymond Yau <superquad.vortex2@gmail.com>
+Signed-off-by: Takashi Iwai <tiwai@suse.de>
+---
+ src/conf/cards/HDA-Intel.conf |   19 +++++++++++++------
+ 1 files changed, 13 insertions(+), 6 deletions(-)
+
+diff --git a/src/conf/cards/HDA-Intel.conf b/src/conf/cards/HDA-Intel.conf
+index f7eecb4..bc82dbf 100644
+--- a/src/conf/cards/HDA-Intel.conf
++++ b/src/conf/cards/HDA-Intel.conf
+@@ -9,13 +9,20 @@ HDA-Intel.pcm.front.0 {
+ 	@args.CARD {
+ 		type string
+ 	}
+-	type softvol
+-	slave.pcm {
+-		type hw
+-		card $CARD
++	type asym
++	playback.pcm {
++		type softvol
++		slave.pcm {
++			type hw
++			card $CARD
++		}
++		control {
++			name "PCM Playback Volume"
++			card $CARD
++		}
+ 	}
+-	control {
+-		name "PCM Playback Volume"
++	capture.pcm {
++		type hw
+ 		card $CARD
+ 	}
+ }	
+-- 
+1.7.6
+

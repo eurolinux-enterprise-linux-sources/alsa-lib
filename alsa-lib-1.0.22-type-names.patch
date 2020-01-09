@@ -1,0 +1,29 @@
+From a4f71b19407fde8d5fd4f35850543173636b3ee0 Mon Sep 17 00:00:00 2001
+From: Jaroslav Kysela <perex@perex.cz>
+Date: Tue, 23 Nov 2010 13:40:25 +0100
+Subject: [PATCH] pcm: add MMAP_EMUL to type names
+
+If we try to print this then it causes a read past the end of the array
+in snd_pcm_type_name().
+
+From: Dan Carpenter <error27@gmail.com>
+Signed-off-by: Jaroslav Kysela <perex@perex.cz>
+---
+ src/pcm/pcm.c |    1 +
+ 1 files changed, 1 insertions(+), 0 deletions(-)
+
+diff --git a/src/pcm/pcm.c b/src/pcm/pcm.c
+index 7409943..906b502 100644
+--- a/src/pcm/pcm.c
++++ b/src/pcm/pcm.c
+@@ -1633,6 +1633,7 @@ static const char *const snd_pcm_type_names[] = {
+ 	PCMTYPE(SOFTVOL),
+         PCMTYPE(IOPLUG),
+         PCMTYPE(EXTPLUG),
++	PCMTYPE(MMAP_EMUL),
+ };
+ 
+ static const char *const snd_pcm_subformat_names[] = {
+-- 
+1.7.6
+

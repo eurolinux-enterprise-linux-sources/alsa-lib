@@ -1,0 +1,25 @@
+From e1c876a2f0df6c658a5ea0ddde14ee7201fd124b Mon Sep 17 00:00:00 2001
+From: Takashi Iwai <tiwai@suse.de>
+Date: Fri, 3 Jun 2011 17:27:27 +0200
+Subject: [PATCH] Fix missing error code in snd_ctl_hw_open()
+
+Signed-off-by: Takashi Iwai <tiwai@suse.de>
+---
+ src/control/control_hw.c |    1 +
+ 1 files changed, 1 insertions(+), 0 deletions(-)
+
+diff --git a/src/control/control_hw.c b/src/control/control_hw.c
+index cf258b4..16c4987 100644
+--- a/src/control/control_hw.c
++++ b/src/control/control_hw.c
+@@ -414,6 +414,7 @@ int snd_ctl_hw_open(snd_ctl_t **handle, const char *name, int card, int mode)
+ 	if (err < 0) {
+ 		close(fd);
+ 		free(hw);
++		return err;
+ 	}
+ 	ctl->ops = &snd_ctl_hw_ops;
+ 	ctl->private_data = hw;
+-- 
+1.7.6
+

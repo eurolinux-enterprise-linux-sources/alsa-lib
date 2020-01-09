@@ -1,0 +1,56 @@
+From ab6df229015f46bc2c7b50f5278480d996b232c0 Mon Sep 17 00:00:00 2001
+From: Clemens Ladisch <clemens@ladisch.de>
+Date: Wed, 10 Nov 2010 10:11:51 +0100
+Subject: [PATCH] USB-Audio.conf: fix Audiophile USB card name
+
+The device name of the M-Audio AudioPhile USB is actually "Audiophile USB (tm)".
+Also keep the old string, just to be sure.
+
+Signed-off-by: Clemens Ladisch <clemens@ladisch.de>
+---
+ src/conf/cards/USB-Audio.conf |    8 ++++++--
+ 1 files changed, 6 insertions(+), 2 deletions(-)
+
+diff --git a/src/conf/cards/USB-Audio.conf b/src/conf/cards/USB-Audio.conf
+index 5849e3f..0726c34 100644
+--- a/src/conf/cards/USB-Audio.conf
++++ b/src/conf/cards/USB-Audio.conf
+@@ -16,6 +16,7 @@
+ # here.
+ USB-Audio.pcm.use_dmix {
+ 	"AudioPhile" no    # uses big-endian 24-bit samples
++	"Audiophile USB (tm)" no
+ }
+ 
+ # If a device does not have a four-channel mode for the front/rear outputs,
+@@ -25,6 +26,7 @@ USB-Audio.pcm.use_dmix {
+ # two_stereo_devices - for devices that have two stereo audio interfaces
+ USB-Audio.pcm.surround40_type {
+ 	"AudioPhile" two_stereo_devices
++	"Audiophile USB (tm)" two_stereo_devices
+ 	"OmniStudio" two_stereo_devices
+ 	"Quattro" two_stereo_devices
+ 	"SB Audigy 2 NX" six_channels
+@@ -43,7 +45,8 @@ USB-Audio.pcm.iec958_device {
+ # M-Audio AudioPhile USB:
+ # device 0: analog output, digital input
+ # device 1: digital output, analog input
+-USB-Audio."AudioPhile".pcm.default {
++USB-Audio."AudioPhile".pcm.default "cards.USB-Audio.Audiophile USB (tm).pcm.default"
++USB-Audio."Audiophile USB (tm)".pcm.default {
+ 	@args [ CARD ]
+ 	@args.CARD { type string }
+ 	type asym
+@@ -63,7 +66,8 @@ USB-Audio."AudioPhile".pcm.default {
+ 		}
+ 	}
+ }
+-USB-Audio."AudioPhile".pcm.iec958 {
++USB-Audio."AudioPhile".pcm.iec958 "cards.USB-Audio.Audiophile USB (tm).pcm.iec958"
++USB-Audio."Audiophile USB (tm)".pcm.iec958 {
+ 	@args [ CARD AES0 AES1 AES2 AES3 ]
+ 	@args.CARD { type string }
+ 	@args.AES0 { type integer }
+-- 
+1.7.6
+

@@ -1,0 +1,95 @@
+From 51ef640cee37f73d771e784e81196ff7c15f53ff Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?R=C3=A9mi=20Denis-Courmont?= <remi@remlab.net>
+Date: Wed, 21 Apr 2010 18:37:47 +0200
+Subject: [PATCH] Check for thread-specific locale support
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Signed-off-by: Rémi Denis-Courmont <remi@remlab.net>
+Signed-off-by: Jaroslav Kysela <perex@perex.cz>
+---
+ configure.in |    1 +
+ 1 files changed, 1 insertions(+), 0 deletions(-)
+
+diff --git a/configure.in b/configure.in
+index f6df502..abc4687 100644
+--- a/configure.in
++++ b/configure.in
+@@ -64,6 +64,7 @@ dnl Checks for library functions.
+ AC_PROG_GCC_TRADITIONAL
+ AC_CHECK_FUNC([hsearch_r], [HAVE_HSEARCH_R=yes])
+ AM_CONDITIONAL(ALSA_HSEARCH_R, [test "x$HAVE_HSEARCH_R" != xyes])
++AC_CHECK_FUNCS([uselocale])
+ 
+ SAVE_LIBRARY_VERSION
+ AC_SUBST(LIBTOOL_VERSION_INFO)
+-- 
+1.7.6
+
+From 8d80d5f344ae5e32d24122cbf8e759fdd1e1a60d Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?R=C3=A9mi=20Denis-Courmont?= <remi@remlab.net>
+Date: Wed, 21 Apr 2010 18:37:48 +0200
+Subject: [PATCH] Use thread-safe locale functions if available
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+setlocale() is not thread-safe. It can actually trigger a crash if
+another thread uses locale informations at the same time in the process.
+Library code should use POSIX newlocale/duplocale/uselocale/freelocale
+instead. Those functions only change the locale data for the calling
+thread.
+
+Signed-off-by: Rémi Denis-Courmont <remi@remlab.net>
+Signed-off-by: Jaroslav Kysela <perex@perex.cz>
+---
+ src/conf.c |   16 ++++++++++++++++
+ 1 files changed, 16 insertions(+), 0 deletions(-)
+
+diff --git a/src/conf.c b/src/conf.c
+index 570c90f..5d8c5c9 100644
+--- a/src/conf.c
++++ b/src/conf.c
+@@ -499,22 +499,38 @@ static int safe_strtod(const char *str, double *val)
+ {
+ 	char *end;
+ 	double v;
++#ifdef HAVE_USELOCALE
++	locale_t saved_locale, c_locale;
++#else
+ 	char *saved_locale;
+ 	char locstr[64]; /* enough? */
++#endif
+ 	int err;
+ 
+ 	if (!*str)
+ 		return -EINVAL;
++#ifdef HAVE_USELOCALE
++	c_locale = newlocale(LC_NUMERIC_MASK, "C", 0);
++	saved_locale = uselocale(c_locale);
++#else
+ 	saved_locale = setlocale(LC_NUMERIC, NULL);
+ 	if (saved_locale) {
+ 		snprintf(locstr, sizeof(locstr), "%s", saved_locale);
+ 		setlocale(LC_NUMERIC, "C");
+ 	}
++#endif
+ 	errno = 0;
+ 	v = strtod(str, &end);
+ 	err = -errno;
++#ifdef HAVE_USELOCALE
++	if (c_locale != (locale_t)0) {
++		uselocale(saved_locale);
++		freelocale(c_locale);
++	}
++#else
+ 	if (saved_locale)
+ 		setlocale(LC_NUMERIC, locstr);
++#endif
+ 	if (err)
+ 		return err;
+ 	if (*end)
+-- 
+1.7.6
+

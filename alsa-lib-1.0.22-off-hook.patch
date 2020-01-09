@@ -1,0 +1,84 @@
+From 63acb8732933aa9732e3bf2e3affef925dd9c45b Mon Sep 17 00:00:00 2001
+From: David Fries <david@fries.net>
+Date: Fri, 25 Dec 2009 14:22:38 -0600
+Subject: [PATCH] modem.conf Off-hook improve behavior
+
+Only restore the old value if it differs from the requested
+value, because if it has changed restoring the old value
+overrides the change.  Take for example, a voice modem with
+a .conf that sets preserve off-hook.  Start playback (on-hook
+to off-hook), start record (off-hook to off-hook), stop
+playback (off-hook to restore on-hook), stop record (on-hook
+to restore off-hook), Clearly you don't want to leave the
+modem "on the phone" now that there isn't any playback or
+recording active.
+
+Signed-off-by: David Fries <david@fries.net>
+Signed-off-by: Takashi Iwai <tiwai@suse.de>
+---
+ include/control.h     |    1 +
+ src/control/control.c |   12 ++++++++++++
+ src/control/setup.c   |   12 +++++++++++-
+ 3 files changed, 24 insertions(+), 1 deletions(-)
+
+diff --git a/include/control.h b/include/control.h
+index 29ea397..3d6b0a5 100644
+--- a/include/control.h
++++ b/include/control.h
+@@ -423,6 +423,7 @@ int snd_ctl_elem_value_malloc(snd_ctl_elem_value_t **ptr);
+ void snd_ctl_elem_value_free(snd_ctl_elem_value_t *obj);
+ void snd_ctl_elem_value_clear(snd_ctl_elem_value_t *obj);
+ void snd_ctl_elem_value_copy(snd_ctl_elem_value_t *dst, const snd_ctl_elem_value_t *src);
++int snd_ctl_elem_value_compare(snd_ctl_elem_value_t *left, const snd_ctl_elem_value_t *right);
+ void snd_ctl_elem_value_get_id(const snd_ctl_elem_value_t *obj, snd_ctl_elem_id_t *ptr);
+ unsigned int snd_ctl_elem_value_get_numid(const snd_ctl_elem_value_t *obj);
+ snd_ctl_elem_iface_t snd_ctl_elem_value_get_interface(const snd_ctl_elem_value_t *obj);
+diff --git a/src/control/control.c b/src/control/control.c
+index 51628ba..b63a28c 100644
+--- a/src/control/control.c
++++ b/src/control/control.c
+@@ -2249,6 +2249,18 @@ void snd_ctl_elem_value_copy(snd_ctl_elem_value_t *dst, const snd_ctl_elem_value
+ }
+ 
+ /**
++ * \brief compare one #snd_ctl_elem_value_t to another
++ * \param dst pointer to destination
++ * \param src pointer to source
++ * \return 0 on match, less than or greater than otherwise, see memcmp
++ */
++int snd_ctl_elem_value_compare(snd_ctl_elem_value_t *left, const snd_ctl_elem_value_t *right)
++{
++	assert(left && right);
++	return memcmp(left, right, sizeof(*left));
++}
++
++/**
+  * \brief Get CTL element identifier of a CTL element id/value
+  * \param obj CTL element id/value
+  * \param ptr Pointer to returned CTL element identifier
+diff --git a/src/control/setup.c b/src/control/setup.c
+index 408244e..eecda45 100644
+--- a/src/control/setup.c
++++ b/src/control/setup.c
+@@ -192,7 +192,17 @@ int snd_sctl_remove(snd_sctl_t *h)
+ 				return err;
+ 			}
+ 		}
+-		if (elem->preserve) {
++		/* Only restore the old value if it differs from the requested
++		 * value, because if it has changed restoring the old value
++		 * overrides the change.  Take for example, a voice modem with
++		 * a .conf that sets preserve off-hook.  Start playback (on-hook
++		 * to off-hook), start record (off-hook to off-hook), stop
++		 * playback (off-hook to restore on-hook), stop record (on-hook
++		 * to restore off-hook), Clearly you don't want to leave the
++		 * modem "on the phone" now that there isn't any playback or
++		 * recording active.
++		 */
++		if (elem->preserve && snd_ctl_elem_value_compare(elem->val, elem->old)) {
+ 			err = snd_ctl_elem_write(h->ctl, elem->old);
+ 			if (err < 0) {
+ 				SNDERR("Cannot restore ctl elem");
+-- 
+1.7.6
+
