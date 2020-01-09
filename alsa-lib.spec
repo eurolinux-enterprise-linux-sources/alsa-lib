@@ -4,55 +4,19 @@
 
 Summary: The Advanced Linux Sound Architecture (ALSA) library
 Name:    alsa-lib
-Version: 1.0.22
-Release: 3%{?prever_dot}%{?dist}
+Version: 1.1.0
+Release: 4%{?prever_dot}%{?dist}
 License: LGPLv2+
 Group:   System Environment/Libraries
 Source:  ftp://ftp.alsa-project.org/pub/lib/%{name}-%{version}%{?prever}%{?postver}.tar.bz2
 Source10: asound.conf
-Patch0:  alsa-lib-1.0.17-config.patch
+Patch0:  alsa-lib-1.1.0-config.patch
 Patch2:  alsa-lib-1.0.14-glibc-open.patch
 Patch4:	 alsa-lib-1.0.16-no-dox-date.patch
-Patch10: alsa-lib-1.0.22-closetimer.patch
-Patch11: alsa-lib-1.0.22-softvol.patch
-Patch14: alsa-lib-1.0.22-off-hook.patch
-Patch15: alsa-lib-1.0.22-areas.patch
-Patch16: alsa-lib-1.0.22-period-event.patch
-Patch17: alsa-lib-1.0.22-S24LE.patch
-Patch18: alsa-lib-1.0.22-drain-threads.patch
-Patch19: alsa-lib-1.0.22-show-errno.patch
-Patch20: alsa-lib-1.0.22-monotonic.patch
-Patch21: alsa-lib-1.0.22-locale.patch
-Patch22: alsa-lib-1.0.22-seq-parse.patch
-Patch23: alsa-lib-1.0.22-db-range.patch
-Patch24: alsa-lib-1.0.22-memleak-namehint.patch
-Patch25: alsa-lib-1.0.22-plug-comparison.patch
-Patch26: alsa-lib-1.0.22-hda-4hdmi.patch
-Patch27: alsa-lib-1.0.22-minperiodtime.patch
-Patch28: alsa-lib-1.0.22-pcm-compat.patch
-Patch29: alsa-lib-1.0.22-3byte-fix.patch
-Patch30: alsa-lib-1.0.22-namehint-eval.patch
-Patch31: alsa-lib-1.0.22-namehint-eval2.patch
-Patch32: alsa-lib-1.0.22-iec-nolock.patch
-Patch33: alsa-lib-1.0.22-dlobj.patch
-Patch34: alsa-lib-1.0.22-conf-locking.patch
-Patch35: alsa-lib-1.0.22-db-minismute.patch
-Patch36: alsa-lib-1.0.22-direct-timestamp.patch
-Patch37: alsa-lib-1.0.22-audiophile-usb.patch
-Patch38: alsa-lib-1.0.22-fix-delay.patch
-Patch39: alsa-lib-1.0.22-type-names.patch
-Patch40: alsa-lib-1.0.22-cmi8788-aliases.patch
-Patch41: alsa-lib-1.0.22-3d-ctl.patch
-Patch42: alsa-lib-1.0.22-ice1712.patch
-Patch43: alsa-lib-1.0.22-emu10k1-hp.patch
-Patch44: alsa-lib-1.0.22-surr71-typo.patch
-Patch45: alsa-lib-1.0.22-emu10k1-lock.patch
-Patch46: alsa-lib-1.0.22-hda-mic.patch
-Patch47: alsa-lib-1.0.22-coverity.patch
-Patch48: alsa-lib-1.0.22-hda-sub0.patch
-Patch49: alsa-lib-1.0.22-emu10k1-nosound.patch
-Patch50: alsa-lib-1.0.22-miss-errcode.patch
-Patch99: alsa-lib-1.0.22-hwparams.patch
+Patch5:	 alsa-lib-1.1.0-sharedir.patch
+Patch6:	 alsa-lib-1.1.0-coverity1.patch
+Patch7:	 alsa-lib-1.1.0-ctlelemassert.patch
+Patch8:	 alsa-lib-1.1.0-pcmhwleak.patch
 URL:     http://www.alsa-project.org/
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root
 BuildRequires: doxygen
@@ -84,49 +48,13 @@ against the ALSA libraries and interfaces.
 %patch0 -p1 -b .config
 %patch2 -p1 -b .glibc-open
 %patch4 -p1 -b .no-dox-date
-%patch10 -p1 -b .closetimer
-%patch11 -p1 -b .softvol
-%patch14 -p1 -b .off-hook
-%patch15 -p1 -b .areas
-%patch16 -p1 -b .period-event
-%patch17 -p1 -b .S24LE
-%patch18 -p1 -b .drain-threads
-%patch19 -p1 -b .show-errno
-%patch20 -p1 -b .monotonic
-%patch21 -p1 -b .locale
-%patch22 -p1 -b .seq-parse
-%patch23 -p1 -b .db-range
-%patch24 -p1 -b .memleak-namehint
-%patch25 -p1 -b .plug-comparison
-%patch26 -p1 -b .hda-4hdmi
-%patch27 -p1 -b .minperiodtime
-%patch28 -p1 -b .pcm-compat
-%patch29 -p1 -b .3byte-fix
-%patch30 -p1 -b .namehint-eval
-%patch31 -p1 -b .namehint-eval2
-%patch32 -p1 -b .iec-nolock
-%patch33 -p1 -b .dlobj
-%patch34 -p1 -b .conf-locking
-%patch35 -p1 -b .db-minismute
-%patch36 -p1 -b .direct-timestamp
-%patch37 -p1 -b .audiophile-usb
-%patch38 -p1 -b .fix-delay
-%patch39 -p1 -b .type-names
-%patch40 -p1 -b .cmi8788-aliases
-%patch41 -p1 -b .3d-ctl
-%patch42 -p1 -b .ice1712
-%patch43 -p1 -b .emu10k1-hp
-%patch44 -p1 -b .surr71-typo
-%patch45 -p1 -b .emu10k1-lock
-%patch46 -p1 -b .hda-mic
-%patch47 -p1 -b .coverity
-%patch48 -p1 -b .hda-sub0
-%patch49 -p1 -b .emu10k1-nosound
-%patch50 -p1 -b .miss-errcode
-%patch99 -p0 -b .hwparams
+%patch5 -p1 -b .sharedir
+%patch6 -p1 -b .coverity1
+%patch7 -p1 -b .ctlelemassert
+%patch8 -p1 -b .pcmhwleak
 
 %build
-%configure --disable-aload
+%configure --disable-aload --disable-ucm --disable-topology
 # Remove useless /usr/lib64 rpath on 64bit archs
 sed -i 's|^hardcode_libdir_flag_spec=.*|hardcode_libdir_flag_spec=""|g' libtool
 sed -i 's|^runpath_var=LD_RUN_PATH|runpath_var=DIE_RPATH_DIE|g' libtool
@@ -173,6 +101,15 @@ rm -rf %{buildroot}
 %{_datadir}/aclocal/alsa.m4
 
 %changelog
+* Tue Jan 12 2016 Jaroslav Kysela <jkysela@redhat.com> - 1.1.0-4
+- Remove ucm and topology files from the /usr/share/alsa tree
+- Coverity fixes
+- Resolves: rhbz#838948
+
+* Tue Jan 12 2016 Jaroslav Kysela <jkysela@redhat.com> - 1.1.0-1
+- Updated to 1.1.0 final
+- Resolves: rhbz#838948
+
 * Mon Aug 15 2011 Jaroslav Kysela <jkysela@redhat.com> - 1.0.22-3
 - Fix broken changelog entry
 - Resolves: rhbz#704772

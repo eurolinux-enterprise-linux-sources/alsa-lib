@@ -44,8 +44,6 @@ typedef struct {
 	snd_pcm_slave_xfer_areas_func_t write;
 	snd_pcm_slave_xfer_areas_undo_func_t undo_read;
 	snd_pcm_slave_xfer_areas_undo_func_t undo_write;
-	snd_pcm_sframes_t (*client_frames)(snd_pcm_t *pcm, snd_pcm_sframes_t frames);
-	snd_pcm_sframes_t (*slave_frames)(snd_pcm_t *pcm, snd_pcm_sframes_t frames);
 	int (*init)(snd_pcm_t *pcm);
 	snd_pcm_uframes_t appl_ptr, hw_ptr;
 	snd_atomic_write_t watom;
@@ -60,8 +58,14 @@ typedef struct {
 	snd1_pcm_plugin_undo_read_generic
 #define snd_pcm_plugin_undo_write_generic \
 	snd1_pcm_plugin_undo_write_generic
+#define snd_pcm_plugin_rewind \
+	snd1_pcm_plugin_rewind
+#define snd_pcm_plugin_forward \
+	snd1_pcm_plugin_forward
 
 void snd_pcm_plugin_init(snd_pcm_plugin_t *plugin);
+snd_pcm_sframes_t snd_pcm_plugin_rewind(snd_pcm_t *pcm, snd_pcm_uframes_t frames);
+snd_pcm_sframes_t snd_pcm_plugin_forward(snd_pcm_t *pcm, snd_pcm_uframes_t frames);
 
 extern const snd_pcm_fast_ops_t snd_pcm_plugin_fast_ops;
 
@@ -82,8 +86,6 @@ snd_pcm_sframes_t snd_pcm_plugin_undo_write_generic
 /* make local functions really local */
 #define snd_pcm_linear_get_index	snd1_pcm_linear_get_index
 #define snd_pcm_linear_put_index	snd1_pcm_linear_put_index
-#define snd_pcm_linear_get32_index	snd1_pcm_linear_get32_index
-#define snd_pcm_linear_put32_index	snd1_pcm_linear_put32_index
 #define snd_pcm_linear_convert_index	snd1_pcm_linear_convert_index
 #define snd_pcm_linear_convert	snd1_pcm_linear_convert
 #define snd_pcm_linear_getput	snd1_pcm_linear_getput
@@ -96,8 +98,6 @@ snd_pcm_sframes_t snd_pcm_plugin_undo_write_generic
 
 int snd_pcm_linear_get_index(snd_pcm_format_t src_format, snd_pcm_format_t dst_format);
 int snd_pcm_linear_put_index(snd_pcm_format_t src_format, snd_pcm_format_t dst_format);
-int snd_pcm_linear_get32_index(snd_pcm_format_t src_format, snd_pcm_format_t dst_format);
-int snd_pcm_linear_put32_index(snd_pcm_format_t src_format, snd_pcm_format_t dst_format);
 int snd_pcm_linear_convert_index(snd_pcm_format_t src_format, snd_pcm_format_t dst_format);
 
 void snd_pcm_linear_convert(const snd_pcm_channel_area_t *dst_areas, snd_pcm_uframes_t dst_offset,

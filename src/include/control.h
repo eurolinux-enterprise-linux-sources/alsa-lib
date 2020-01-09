@@ -182,6 +182,13 @@ typedef enum _snd_ctl_event_type {
 /** Mute state */
 #define SND_CTL_TLV_DB_GAIN_MUTE	-9999999
 
+/** TLV type - fixed channel map positions */
+#define SND_CTL_TLVT_CHMAP_FIXED	0x00101
+/** TLV type - freely swappable channel map positions */
+#define SND_CTL_TLVT_CHMAP_VAR		0x00102
+/** TLV type - pair-wise swappable channel map positions */
+#define SND_CTL_TLVT_CHMAP_PAIRED	0x00103
+
 /** CTL type */
 typedef enum _snd_ctl_type {
 	/** Kernel level CTL */
@@ -224,8 +231,10 @@ char *snd_device_name_get_hint(const void *hint, const char *id);
 
 int snd_ctl_open(snd_ctl_t **ctl, const char *name, int mode);
 int snd_ctl_open_lconf(snd_ctl_t **ctl, const char *name, int mode, snd_config_t *lconf);
+int snd_ctl_open_fallback(snd_ctl_t **ctl, snd_config_t *root, const char *name, const char *orig_name, int mode);
 int snd_ctl_close(snd_ctl_t *ctl);
 int snd_ctl_nonblock(snd_ctl_t *ctl, int nonblock);
+static __inline__ int snd_ctl_abort(snd_ctl_t *ctl) { return snd_ctl_nonblock(ctl, 2); }
 int snd_async_add_ctl_handler(snd_async_handler_t **handler, snd_ctl_t *ctl, 
 			      snd_async_callback_t callback, void *private_data);
 snd_ctl_t *snd_async_handler_get_ctl(snd_async_handler_t *handler);
@@ -283,6 +292,13 @@ unsigned int snd_ctl_event_elem_get_index(const snd_ctl_event_t *obj);
 
 int snd_ctl_elem_list_alloc_space(snd_ctl_elem_list_t *obj, unsigned int entries);
 void snd_ctl_elem_list_free_space(snd_ctl_elem_list_t *obj);
+
+char *snd_ctl_ascii_elem_id_get(snd_ctl_elem_id_t *id);
+int snd_ctl_ascii_elem_id_parse(snd_ctl_elem_id_t *dst, const char *str);
+int snd_ctl_ascii_value_parse(snd_ctl_t *handle,
+			      snd_ctl_elem_value_t *dst,
+			      snd_ctl_elem_info_t *info,
+			      const char *value);
 
 size_t snd_ctl_elem_id_sizeof(void);
 /** \hideinitializer
@@ -410,6 +426,7 @@ void snd_ctl_elem_info_set_index(snd_ctl_elem_info_t *obj, unsigned int val);
 int snd_ctl_elem_add_integer(snd_ctl_t *ctl, const snd_ctl_elem_id_t *id, unsigned int count, long imin, long imax, long istep);
 int snd_ctl_elem_add_integer64(snd_ctl_t *ctl, const snd_ctl_elem_id_t *id, unsigned int count, long long imin, long long imax, long long istep);
 int snd_ctl_elem_add_boolean(snd_ctl_t *ctl, const snd_ctl_elem_id_t *id, unsigned int count);
+int snd_ctl_elem_add_enumerated(snd_ctl_t *ctl, const snd_ctl_elem_id_t *id, unsigned int count, unsigned int items, const char *const names[]);
 int snd_ctl_elem_add_iec958(snd_ctl_t *ctl, const snd_ctl_elem_id_t *id);
 int snd_ctl_elem_remove(snd_ctl_t *ctl, snd_ctl_elem_id_t *id);
 
@@ -423,6 +440,7 @@ int snd_ctl_elem_value_malloc(snd_ctl_elem_value_t **ptr);
 void snd_ctl_elem_value_free(snd_ctl_elem_value_t *obj);
 void snd_ctl_elem_value_clear(snd_ctl_elem_value_t *obj);
 void snd_ctl_elem_value_copy(snd_ctl_elem_value_t *dst, const snd_ctl_elem_value_t *src);
+int snd_ctl_elem_value_compare(snd_ctl_elem_value_t *left, const snd_ctl_elem_value_t *right);
 void snd_ctl_elem_value_get_id(const snd_ctl_elem_value_t *obj, snd_ctl_elem_id_t *ptr);
 unsigned int snd_ctl_elem_value_get_numid(const snd_ctl_elem_value_t *obj);
 snd_ctl_elem_iface_t snd_ctl_elem_value_get_interface(const snd_ctl_elem_value_t *obj);
@@ -514,6 +532,7 @@ int snd_hctl_open(snd_hctl_t **hctl, const char *name, int mode);
 int snd_hctl_open_ctl(snd_hctl_t **hctlp, snd_ctl_t *ctl);
 int snd_hctl_close(snd_hctl_t *hctl);
 int snd_hctl_nonblock(snd_hctl_t *hctl, int nonblock);
+static __inline__ int snd_hctl_abort(snd_hctl_t *hctl) { return snd_hctl_nonblock(hctl, 2); }
 int snd_hctl_poll_descriptors_count(snd_hctl_t *hctl);
 int snd_hctl_poll_descriptors(snd_hctl_t *hctl, struct pollfd *pfds, unsigned int space);
 int snd_hctl_poll_descriptors_revents(snd_hctl_t *ctl, struct pollfd *pfds, unsigned int nfds, unsigned short *revents);

@@ -540,7 +540,6 @@ void snd_pcm_direct_clear_timer_queue(snd_pcm_direct_t *dmix)
 int snd_pcm_direct_timer_stop(snd_pcm_direct_t *dmix)
 {
 	snd_timer_stop(dmix->timer);
-	snd_pcm_direct_clear_timer_queue(dmix);
 	return 0;
 }
 
@@ -567,6 +566,7 @@ int snd_pcm_direct_poll_revents(snd_pcm_t *pcm, struct pollfd *pfds, unsigned in
 	switch (snd_pcm_state(dmix->spcm)) {
 	case SND_PCM_STATE_XRUN:
 	case SND_PCM_STATE_SUSPENDED:
+	case SND_PCM_STATE_SETUP:
 		events |= POLLERR;
 		break;
 	default:
@@ -577,6 +577,7 @@ int snd_pcm_direct_poll_revents(snd_pcm_t *pcm, struct pollfd *pfds, unsigned in
 			switch (snd_pcm_state(pcm)) {
 			case SND_PCM_STATE_XRUN:
 			case SND_PCM_STATE_SUSPENDED:
+			case SND_PCM_STATE_SETUP:
 				events |= POLLERR;
 				break;
 			default:
@@ -788,6 +789,46 @@ int snd_pcm_direct_munmap(snd_pcm_t *pcm ATTRIBUTE_UNUSED)
 	return 0;
 }
 
+snd_pcm_chmap_query_t **snd_pcm_direct_query_chmaps(snd_pcm_t *pcm)
+{
+	snd_pcm_direct_t *dmix = pcm->private_data;
+	return snd_pcm_query_chmaps(dmix->spcm);
+}
+
+snd_pcm_chmap_t *snd_pcm_direct_get_chmap(snd_pcm_t *pcm)
+{
+	snd_pcm_direct_t *dmix = pcm->private_data;
+	return snd_pcm_get_chmap(dmix->spcm);
+}
+
+int snd_pcm_direct_set_chmap(snd_pcm_t *pcm, const snd_pcm_chmap_t *map)
+{
+	snd_pcm_direct_t *dmix = pcm->private_data;
+	return snd_pcm_set_chmap(dmix->spcm, map);
+}
+
+int snd_pcm_direct_prepare(snd_pcm_t *pcm)
+{
+	snd_pcm_direct_t *dmix = pcm->private_data;
+	int err;
+
+	switch (snd_pcm_state(dmix->spcm)) {
+	case SND_PCM_STATE_XRUN:
+	case SND_PCM_STATE_SUSPENDED:
+	case SND_PCM_STATE_DISCONNECTED:
+		err = snd_pcm_prepare(dmix->spcm);
+		if (err < 0)
+			return err;
+		snd_pcm_start(dmix->spcm);
+		break;
+	}
+	snd_pcm_direct_check_interleave(dmix, pcm);
+	dmix->state = SND_PCM_STATE_PREPARED;
+	dmix->appl_ptr = dmix->last_appl_ptr = 0;
+	dmix->hw_ptr = 0;
+	return snd_pcm_direct_set_timer_params(dmix);
+}
+
 int snd_pcm_direct_resume(snd_pcm_t *pcm)
 {
 	snd_pcm_direct_t *dmix = pcm->private_data;
@@ -821,6 +862,7 @@ static void save_slave_setting(snd_pcm_direct_t *dmix, snd_pcm_t *spcm)
 	COPY_SLAVE(period_time);
 	COPY_SLAVE(periods);
 	COPY_SLAVE(tstamp_mode);
+	COPY_SLAVE(tstamp_type);
 	COPY_SLAVE(period_step);
 	COPY_SLAVE(avail_min);
 	COPY_SLAVE(start_threshold);
@@ -888,6 +930,7 @@ int snd_pcm_direct_initialize_slave(snd_pcm_direct_t *dmix, snd_pcm_t *spcm, str
 			SND_PCM_FORMAT_S32 ^ SND_PCM_FORMAT_S32_LE ^ SND_PCM_FORMAT_S32_BE,
 			SND_PCM_FORMAT_S16,
 			SND_PCM_FORMAT_S16 ^ SND_PCM_FORMAT_S16_LE ^ SND_PCM_FORMAT_S16_BE,
+			SND_PCM_FORMAT_S24_LE,
 			SND_PCM_FORMAT_S24_3LE,
 			SND_PCM_FORMAT_U8,
 		};
@@ -1125,8 +1168,10 @@ int snd_pcm_direct_initialize_poll_fd(snd_pcm_direct_t *dmix)
 	snd_timer_poll_descriptors(dmix->timer, &dmix->timer_fd, 1);
 	dmix->poll_fd = dmix->timer_fd.fd;
 
-	dmix->timer_event_suspend = 1<<SND_TIMER_EVENT_MSUSPEND;
-	dmix->timer_event_resume = 1<<SND_TIMER_EVENT_MRESUME;
+	dmix->timer_events = (1<<SND_TIMER_EVENT_MSUSPEND) |
+			     (1<<SND_TIMER_EVENT_MRESUME) |
+			     (1<<SND_TIMER_EVENT_MSTOP) |
+			     (1<<SND_TIMER_EVENT_STOP);
 
 	/*
 	 * Some hacks for older kernel drivers
@@ -1145,9 +1190,15 @@ int snd_pcm_direct_initialize_poll_fd(snd_pcm_direct_t *dmix)
 		 * suspend/resume events.
 		 */
 		if (ver < SNDRV_PROTOCOL_VERSION(2, 0, 5)) {
-			dmix->timer_event_suspend = 1<<SND_TIMER_EVENT_MPAUSE;
-			dmix->timer_event_resume = 1<<SND_TIMER_EVENT_MCONTINUE;
+			dmix->timer_events &= ~((1<<SND_TIMER_EVENT_MSUSPEND) |
+						(1<<SND_TIMER_EVENT_MRESUME));
+			dmix->timer_events |= (1<<SND_TIMER_EVENT_MPAUSE) |
+					      (1<<SND_TIMER_EVENT_MCONTINUE);
 		}
+		/* In older versions, use SND_TIMER_EVENT_START too.
+		 */
+		if (ver < SNDRV_PROTOCOL_VERSION(2, 0, 6))
+			dmix->timer_events |= 1<<SND_TIMER_EVENT_START;
 	}
 	return 0;
 }
@@ -1176,6 +1227,7 @@ static void copy_slave_setting(snd_pcm_direct_t *dmix, snd_pcm_t *spcm)
 	COPY_SLAVE(period_time);
 	COPY_SLAVE(periods);
 	COPY_SLAVE(tstamp_mode);
+	COPY_SLAVE(tstamp_type);
 	COPY_SLAVE(period_step);
 	COPY_SLAVE(avail_min);
 	COPY_SLAVE(start_threshold);
@@ -1274,8 +1326,7 @@ int snd_pcm_direct_set_timer_params(snd_pcm_direct_t *dmix)
 	snd_timer_params_set_ticks(params, 1);
 	if (dmix->tread) {
 		filter = (1<<SND_TIMER_EVENT_TICK) |
-			 dmix->timer_event_suspend |
-			 dmix->timer_event_resume;
+			 dmix->timer_events;
 		snd_timer_params_set_filter(params, filter);
 	}
 	ret = snd_timer_params(dmix->timer, params);
@@ -1427,7 +1478,7 @@ static int _snd_pcm_direct_get_slave_ipc_offset(snd_config_t *root,
 						int hop)
 {
 	snd_config_iterator_t i, next;
-	snd_config_t *pcm_conf;
+	snd_config_t *pcm_conf, *pcm_conf2;
 	int err;
 	long card = 0, device = 0, subdevice = 0;
 	const char *str;
@@ -1458,14 +1509,28 @@ static int _snd_pcm_direct_get_slave_ipc_offset(snd_config_t *root,
 	}
 #endif
 
-	if (snd_config_search(sconf, "slave", &pcm_conf) >= 0 &&
-	    (snd_config_search(pcm_conf, "pcm", &pcm_conf) >= 0 ||
-	    (snd_config_get_string(pcm_conf, &str) >= 0 &&
-	    snd_config_search_definition(root, "pcm_slave", str, &pcm_conf) >= 0 &&
-	    snd_config_search(pcm_conf, "pcm", &pcm_conf) >= 0)))
-		return _snd_pcm_direct_get_slave_ipc_offset(root, pcm_conf,
-							    direction,
-							    hop + 1);
+	if (snd_config_search(sconf, "slave", &pcm_conf) >= 0) {
+		if (snd_config_search(pcm_conf, "pcm", &pcm_conf) >= 0) {
+			return _snd_pcm_direct_get_slave_ipc_offset(root,
+								   pcm_conf,
+								   direction,
+								   hop + 1);
+		} else {
+			if (snd_config_get_string(pcm_conf, &str) >= 0 &&
+			    snd_config_search_definition(root, "pcm_slave",
+						    str, &pcm_conf) >= 0) {
+				if (snd_config_search(pcm_conf, "pcm",
+							&pcm_conf2) >= 0) {
+					err =
+					 _snd_pcm_direct_get_slave_ipc_offset(
+					     root, pcm_conf2, direction, hop + 1);
+					snd_config_delete(pcm_conf);
+					return err;
+				}
+				snd_config_delete(pcm_conf);
+			}
+		}
+	}
 
 	snd_config_for_each(i, next, sconf) {
 		snd_config_t *n = snd_config_iterator_entry(i);
@@ -1603,13 +1668,20 @@ int snd_pcm_direct_parse_open_conf(snd_config_t *root, snd_config_t *conf,
 				continue;
 			}
 			if (isdigit(*group) == 0) {
-				struct group *grp = getgrnam(group);
-				if (grp == NULL) {
+				long clen = sysconf(_SC_GETGR_R_SIZE_MAX);
+				size_t len = (clen == -1) ? 1024 : (size_t)clen;
+				struct group grp, *pgrp;
+				char *buffer = (char *)malloc(len);
+				if (buffer == NULL)
+					return -ENOMEM;
+				int st = getgrnam_r(group, &grp, buffer, len, &pgrp);
+				if (st != 0 || !pgrp) {
 					SNDERR("The field ipc_gid must be a valid group (create group %s)", group);
-					free(group);
+					free(buffer);
 					return -EINVAL;
 				}
-				rec->ipc_gid = grp->gr_gid;
+				rec->ipc_gid = pgrp->gr_gid;
+				free(buffer);
 			} else {
 				rec->ipc_gid = strtol(group, &endp, 10);
 			}

@@ -414,16 +414,22 @@ beginning:</P>
 */
 
 
+#include "local.h"
 #include <stdarg.h>
 #include <limits.h>
 #include <sys/stat.h>
+#include <dirent.h>
 #include <locale.h>
-#include "local.h"
 #ifdef HAVE_LIBPTHREAD
 #include <pthread.h>
 #endif
 
 #ifndef DOC_HIDDEN
+
+#ifdef HAVE_LIBPTHREAD
+static pthread_mutex_t snd_config_update_mutex;
+static pthread_once_t snd_config_update_mutex_once = PTHREAD_ONCE_INIT;
+#endif
 
 struct _snd_config {
 	char *id;
@@ -464,6 +470,36 @@ typedef struct {
 	int ch;
 } input_t;
 
+#ifdef HAVE_LIBPTHREAD
+
+static void snd_config_init_mutex(void)
+{
+	pthread_mutexattr_t attr;
+
+	pthread_mutexattr_init(&attr);
+	pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE);
+	pthread_mutex_init(&snd_config_update_mutex, &attr);
+	pthread_mutexattr_destroy(&attr);
+}
+
+static inline void snd_config_lock(void)
+{
+	pthread_once(&snd_config_update_mutex_once, snd_config_init_mutex);
+	pthread_mutex_lock(&snd_config_update_mutex);
+}
+
+static inline void snd_config_unlock(void)
+{
+	pthread_mutex_unlock(&snd_config_update_mutex);
+}
+
+#else
+
+static inline void snd_config_lock(void) { }
+static inline void snd_config_unlock(void) { }
+
+#endif
+
 static int safe_strtoll(const char *str, long long *val)
 {
 	long long v;
@@ -471,7 +507,7 @@ static int safe_strtoll(const char *str, long long *val)
 	if (!*str)
 		return -EINVAL;
 	errno = 0;
-	if (sscanf(str, "%Li%n", &v, &endidx) < 1)
+	if (sscanf(str, "%lli%n", &v, &endidx) < 1)
 		return -EINVAL;
 	if (str[endidx])
 		return -EINVAL;
@@ -499,22 +535,38 @@ static int safe_strtod(const char *str, double *val)
 {
 	char *end;
 	double v;
+#ifdef HAVE_USELOCALE
+	locale_t saved_locale, c_locale;
+#else
 	char *saved_locale;
 	char locstr[64]; /* enough? */
+#endif
 	int err;
 
 	if (!*str)
 		return -EINVAL;
+#ifdef HAVE_USELOCALE
+	c_locale = newlocale(LC_NUMERIC_MASK, "C", 0);
+	saved_locale = uselocale(c_locale);
+#else
 	saved_locale = setlocale(LC_NUMERIC, NULL);
 	if (saved_locale) {
 		snprintf(locstr, sizeof(locstr), "%s", saved_locale);
 		setlocale(LC_NUMERIC, "C");
 	}
+#endif
 	errno = 0;
 	v = strtod(str, &end);
 	err = -errno;
+#ifdef HAVE_USELOCALE
+	if (c_locale != (locale_t)0) {
+		uselocale(saved_locale);
+		freelocale(c_locale);
+	}
+#else
 	if (saved_locale)
 		setlocale(LC_NUMERIC, locstr);
+#endif
 	if (err)
 		return err;
 	if (*end)
@@ -1337,7 +1389,7 @@ static int _snd_config_save_node_value(snd_config_t *n, snd_output_t *out,
 		snd_output_printf(out, "%ld", n->u.integer);
 		break;
 	case SND_CONFIG_TYPE_INTEGER64:
-		snd_output_printf(out, "%Ld", n->u.integer64);
+		snd_output_printf(out, "%lld", n->u.integer64);
 		break;
 	case SND_CONFIG_TYPE_REAL:
 		snd_output_printf(out, "%-16g", n->u.real);
@@ -2176,6 +2228,38 @@ int snd_config_imake_string(snd_config_t **config, const char *id, const char *v
 	return 0;
 }
 
+int snd_config_imake_safe_string(snd_config_t **config, const char *id, const char *value)
+{
+	int err;
+	snd_config_t *tmp;
+	char *c;
+
+	err = snd_config_make(&tmp, id, SND_CONFIG_TYPE_STRING);
+	if (err < 0)
+		return err;
+	if (value) {
+		tmp->u.string = strdup(value);
+		if (!tmp->u.string) {
+			snd_config_delete(tmp);
+			return -ENOMEM;
+		}
+
+		for (c = tmp->u.string; *c; c++) {
+			if (*c == ' ' || *c == '-' || *c == '_' ||
+				(*c >= '0' && *c <= '9') ||
+				(*c >= 'a' && *c <= 'z') ||
+				(*c >= 'A' && *c <= 'Z'))
+					continue;
+			*c = '_';
+		}
+	} else {
+		tmp->u.string = NULL;
+	}
+	*config = tmp;
+	return 0;
+}
+
+
 /**
  * \brief Creates a pointer configuration node with the given initial value.
  * \param[out] config The function puts the handle to the new node at
@@ -2589,7 +2673,7 @@ int snd_config_get_ascii(const snd_config_t *config, char **ascii)
 		{
 			char res[32];
 			int err;
-			err = snprintf(res, sizeof(res), "%Li", config->u.integer64);
+			err = snprintf(res, sizeof(res), "%lli", config->u.integer64);
 			if (err < 0 || err == sizeof(res)) {
 				assert(0);
 				return -ENOMEM;
@@ -3228,6 +3312,7 @@ static int snd_config_hooks_call(snd_config_t *root, snd_config_t *config, snd_c
 		snd_config_iterator_t i, next;
 		if (snd_config_get_type(func_conf) != SND_CONFIG_TYPE_COMPOUND) {
 			SNDERR("Invalid type for func %s definition", str);
+			err = -EINVAL;
 			goto _err;
 		}
 		snd_config_for_each(i, next, func_conf) {
@@ -3302,6 +3387,7 @@ static int snd_config_hooks(snd_config_t *config, snd_config_t *private_data)
 
 	if ((err = snd_config_search(config, "@hooks", &n)) < 0)
 		return 0;
+	snd_config_lock();
 	snd_config_remove(n);
 	do {
 		hit = 0;
@@ -3318,7 +3404,7 @@ static int snd_config_hooks(snd_config_t *config, snd_config_t *private_data)
 			if (i == idx) {
 				err = snd_config_hooks_call(config, n, private_data);
 				if (err < 0)
-					return err;
+					goto _err;
 				idx++;
 				hit = 1;
 			}
@@ -3327,6 +3413,43 @@ static int snd_config_hooks(snd_config_t *config, snd_config_t *private_data)
 	err = 0;
        _err:
 	snd_config_delete(n);
+	snd_config_unlock();
+	return err;
+}
+
+static int config_filename_filter(const struct dirent *dirent)
+{
+	size_t flen;
+
+	if (dirent == NULL)
+		return 0;
+	if (dirent->d_type == DT_DIR)
+		return 0;
+
+	flen = strlen(dirent->d_name);
+	if (flen <= 5)
+		return 0;
+
+	if (strncmp(&dirent->d_name[flen-5], ".conf", 5) == 0)
+		return 1;
+
+	return 0;
+}
+
+static int config_file_open(snd_config_t *root, const char *filename)
+{
+	snd_input_t *in;
+	int err;
+
+	err = snd_input_stdio_open(&in, filename, "r");
+	if (err >= 0) {
+		err = snd_config_load(root, in);
+		snd_input_close(in);
+		if (err < 0)
+			SNDERR("%s may be old or corrupted: consider to remove or fix it", filename);
+	} else
+		SNDERR("cannot access file %s", filename);
+
 	return err;
 }
 
@@ -3414,20 +3537,46 @@ int snd_config_hook_load(snd_config_t *root, snd_config_t *config, snd_config_t 
 		}
 	} while (hit);
 	for (idx = 0; idx < fi_count; idx++) {
-		snd_input_t *in;
+		struct stat st;
 		if (!errors && access(fi[idx].name, R_OK) < 0)
 			continue;
-		err = snd_input_stdio_open(&in, fi[idx].name, "r");
-		if (err >= 0) {
-			err = snd_config_load(root, in);
-			snd_input_close(in);
-			if (err < 0) {
-				SNDERR("%s may be old or corrupted: consider to remove or fix it", fi[idx].name);
-				goto _err;
-			}
-		} else {
-			SNDERR("cannot access file %s", fi[idx].name);
+		if (stat(fi[idx].name, &st) < 0) {
+			SNDERR("cannot stat file/directory %s", fi[idx].name);
+			continue;
 		}
+		if (S_ISDIR(st.st_mode)) {
+			struct dirent **namelist;
+			int n;
+
+#ifndef DOC_HIDDEN
+#ifdef _GNU_SOURCE
+#define SORTFUNC	versionsort
+#else
+#define SORTFUNC	alphasort
+#endif
+#endif
+			n = scandir(fi[idx].name, &namelist, config_filename_filter, SORTFUNC);
+			if (n > 0) {
+				int j;
+				err = 0;
+				for (j = 0; j < n; ++j) {
+					if (err >= 0) {
+						int sl = strlen(fi[idx].name) + strlen(namelist[j]->d_name) + 2;
+						char *filename = malloc(sl);
+						snprintf(filename, sl, "%s/%s", fi[idx].name, namelist[j]->d_name);
+						filename[sl-1] = '\0';
+
+						err = config_file_open(root, filename);
+						free(filename);
+					}
+					free(namelist[j]);
+				}
+				free(namelist);
+				if (err < 0)
+					goto _err;
+			}
+		} else if ((err = config_file_open(root, fi[idx].name)) < 0)
+			goto _err;
 	}
 	*dst = NULL;
 	err = 0;
@@ -3676,10 +3825,6 @@ int snd_config_update_r(snd_config_t **_top, snd_config_update_t **_update, cons
 	return 1;
 }
 
-#ifdef HAVE_LIBPTHREAD
-static pthread_mutex_t snd_config_update_mutex = PTHREAD_MUTEX_INITIALIZER;
-#endif
-
 /** 
  * \brief Updates #snd_config by rereading the global configuration files (if needed).
  * \return 0 if #snd_config was up to date, 1 if #snd_config was
@@ -3700,13 +3845,9 @@ int snd_config_update(void)
 {
 	int err;
 
-#ifdef HAVE_LIBPTHREAD
-	pthread_mutex_lock(&snd_config_update_mutex);
-#endif
+	snd_config_lock();
 	err = snd_config_update_r(&snd_config, &snd_config_global_update, NULL);
-#ifdef HAVE_LIBPTHREAD
-	pthread_mutex_unlock(&snd_config_update_mutex);
-#endif
+	snd_config_unlock();
 	return err;
 }
 
@@ -3739,18 +3880,14 @@ int snd_config_update_free(snd_config_update_t *update)
  */
 int snd_config_update_free_global(void)
 {
-#ifdef HAVE_LIBPTHREAD
-	pthread_mutex_lock(&snd_config_update_mutex);
-#endif
+	snd_config_lock();
 	if (snd_config)
 		snd_config_delete(snd_config);
 	snd_config = NULL;
 	if (snd_config_global_update)
 		snd_config_update_free(snd_config_global_update);
 	snd_config_global_update = NULL;
-#ifdef HAVE_LIBPTHREAD
-	pthread_mutex_unlock(&snd_config_update_mutex);
-#endif
+	snd_config_unlock();
 	/* FIXME: better to place this in another place... */
 	snd_dlobj_cache_cleanup();
 
@@ -4093,6 +4230,7 @@ static int _snd_config_evaluate(snd_config_t *src,
 			snd_config_iterator_t i, next;
 			if (snd_config_get_type(func_conf) != SND_CONFIG_TYPE_COMPOUND) {
 				SNDERR("Invalid type for func %s definition", str);
+				err = -EINVAL;
 				goto _err;
 			}
 			snd_config_for_each(i, next, func_conf) {
@@ -4641,7 +4779,7 @@ int snd_config_expand(snd_config_t *config, snd_config_t *root, const char *args
 		snd_config_delete(subs);
 	return err;
 }
-	
+
 /**
  * \brief Searches for a definition in a configuration tree, using
  *        aliases and expanding hooks and arguments.
@@ -4691,10 +4829,15 @@ int snd_config_search_definition(snd_config_t *config,
 	 *  if key contains dot (.), the implicit base is ignored
 	 *  and the key starts from root given by the 'config' parameter
 	 */
+	snd_config_lock();
 	err = snd_config_search_alias_hooks(config, strchr(key, '.') ? NULL : base, key, &conf);
-	if (err < 0)
+	if (err < 0) {
+		snd_config_unlock();
 		return err;
-	return snd_config_expand(conf, config, args, NULL, result);
+	}
+	err = snd_config_expand(conf, config, args, NULL, result);
+	snd_config_unlock();
+	return err;
 }
 
 #ifndef DOC_HIDDEN
@@ -4733,3 +4876,39 @@ static void _snd_config_end(void)
 	files_info_count = 0;
 }
 #endif
+
+size_t page_size(void)
+{
+	long s = sysconf(_SC_PAGE_SIZE);
+	assert(s > 0);
+	return s;
+}
+
+size_t page_align(size_t size)
+{
+	size_t r;
+	long psz = page_size();
+	r = size % psz;
+	if (r)
+		return size + psz - r;
+	return size;
+}
+
+size_t page_ptr(size_t object_offset, size_t object_size, size_t *offset, size_t *mmap_offset)
+{
+	size_t r;
+	long psz = page_size();
+	assert(offset);
+	assert(mmap_offset);
+	*mmap_offset = object_offset;
+	object_offset %= psz;
+	*mmap_offset -= object_offset;
+	object_size += object_offset;
+	r = object_size % psz;
+	if (r)
+		r = object_size + psz - r;
+	else
+		r = object_size;
+	*offset = object_offset;
+	return r;
+}
